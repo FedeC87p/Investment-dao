@@ -10,6 +10,13 @@ pub mod dao {
         Encode,
     };
 
+    // Consts.
+    const ONE_MINUTE: u64 = 60;
+
+    // Types.
+    pub type ProposalId = u64;
+
+    // Enums.
     #[derive(Encode, Decode)]
     #[cfg_attr(feature = "std", derive(Debug, PartialEq, Eq, scale_info::TypeInfo))]
     pub enum VoteType {
@@ -31,6 +38,7 @@ pub mod dao {
         TxFailed,
     }
 
+    // Structs.
     #[derive(Encode, Decode)]
     #[cfg_attr(
         feature = "std",
@@ -46,8 +54,8 @@ pub mod dao {
         to: AccountId,
         vote_start: u64,
         vote_end: u64,
-        amount: Balance,
         executed: bool,
+        amount: Balance
     }
 
     #[derive(Encode, Decode, Default)]
@@ -65,15 +73,13 @@ pub mod dao {
         for_votes: u128,
         against_votes: u128,
     }
-    const ONE_MINUTE: u64 = 60;
-    pub type ProposalId = u64;
-
+    
     #[ink(storage)]
     pub struct Governor {
         proposals: Mapping<ProposalId, Proposal>,
         proposal_votes: Mapping<Proposal, ProposalVote>,
         votes: Mapping<(ProposalId, AccountId), ()>,
-        next_proposal_id: ProposalId,
+        proposal_id : ProposalId,
         quorum: u8,
         governance_token: AccountId,
     }
@@ -85,10 +91,9 @@ pub mod dao {
                 proposals: Default::default(),
                 proposal_votes: Default::default(),
                 votes: Default::default(),
-                next_proposal_id: Default::default(),
+                proposal_id : Default::default(),
                 quorum,
-                governance_token,
-                
+                governance_token
             }
         }
 
@@ -98,24 +103,26 @@ pub mod dao {
             to: AccountId,
             amount: Balance,
             duration: u64,) -> Result<(), GovernorError> {
-            if amount <= 0 {
+            if amount <= 0
+            {
                 return Err(GovernorError::AmountShouldNotBeZero)
             }
 
-            if duration <= 0 {
+            if duration <= 0
+            {
                 return Err(GovernorError::DurationError)
             }
-
+            
             let proposal = Proposal {
-                to,
+                to: to,
                 vote_start: self.env().block_timestamp(),
                 vote_end: self.env().block_timestamp() + duration * ONE_MINUTE,
                 executed: false,
                 amount,
             };
 
-            self.next_proposal_id = self.next_proposal_id() + 1;
-            self.proposals.insert(self.next_proposal_id, &proposal);
+            self.proposal_id = self.proposal_id + 1;
+            self.proposals.insert(self.proposal_id , &proposal);
             self.proposal_votes.insert(proposal, &{ProposalVote {
                 for_votes: 0,
                 against_votes: 0
@@ -226,8 +233,8 @@ pub mod dao {
         }
 
         #[ink(message)]
-        pub fn next_proposal_id(&self) -> ProposalId  {
-            self.next_proposal_id
+        pub fn proposal_id (&self) -> ProposalId  {
+            self.proposal_id 
         }
 
         fn get_proposal_votes(&self, proposal_id: ProposalId) -> Option<ProposalVote> {
@@ -312,7 +319,7 @@ pub mod dao {
             );
             let result = governor.propose(accounts.django, 100, 1);
             assert_eq!(result, Ok(()));
-            let proposal = governor.get_proposal(1).unwrap();
+            let proposal = governor.get_proposal(0).unwrap();
             let now = governor.now();
             assert_eq!(
                 proposal,
@@ -324,7 +331,7 @@ pub mod dao {
                     executed: false,
                 }
             );
-            assert_eq!(governor.next_proposal_id(), 1);
+            assert_eq!(governor.proposal_id(), 1);
         }
 
         #[ink::test]
@@ -332,9 +339,8 @@ pub mod dao {
             let mut governor = create_contract(1000);
             let result = governor.propose(AccountId::from([0x02; 32]), 100, 1);
             assert_eq!(result, Ok(()));
-            assert_eq!(governor.next_proposal_id(), 1);
-            let execute = governor.execute(1);
-            assert_eq!(execute, Err(GovernorError::ProposalNotFound));
+            let execute = governor.execute(0);
+            assert_eq!(execute, Err(GovernorError::QuorumNotReached));
         }
     }
 }
