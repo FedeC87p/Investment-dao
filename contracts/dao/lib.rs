@@ -2,9 +2,17 @@
 
 #[ink::contract]
 pub mod dao {
-    use ink::env::call::{build_call, ExecutionInput, Selector};
-    use ink::env::DefaultEnvironment;
-    use ink::storage::Mapping;
+    use ink::{
+        env::{
+            call::{
+                build_call,
+                ExecutionInput,
+                Selector,
+            },
+            DefaultEnvironment,
+        },
+        storage::Mapping,
+    };
     use scale::{
         Decode,
         Encode,
@@ -55,7 +63,7 @@ pub mod dao {
         vote_start: u64,
         vote_end: u64,
         executed: bool,
-        amount: Balance
+        amount: Balance,
     }
 
     #[derive(Encode, Decode, Default)]
@@ -73,13 +81,13 @@ pub mod dao {
         for_votes: u128,
         against_votes: u128,
     }
-    
+
     #[ink(storage)]
     pub struct Governor {
         proposals: Mapping<ProposalId, Proposal>,
         proposal_votes: Mapping<Proposal, ProposalVote>,
         votes: Mapping<(ProposalId, AccountId), ()>,
-        proposal_id : ProposalId,
+        proposal_id: ProposalId,
         quorum: u8,
         governance_token: AccountId,
     }
@@ -91,9 +99,9 @@ pub mod dao {
                 proposals: Default::default(),
                 proposal_votes: Default::default(),
                 votes: Default::default(),
-                proposal_id : Default::default(),
+                proposal_id: Default::default(),
                 quorum,
-                governance_token
+                governance_token,
             }
         }
 
@@ -102,31 +110,32 @@ pub mod dao {
             &mut self,
             to: AccountId,
             amount: Balance,
-            duration: u64,) -> Result<(), GovernorError> {
-            if amount <= 0
-            {
+            duration: u64,
+        ) -> Result<(), GovernorError> {
+            if amount <= 0 {
                 return Err(GovernorError::AmountShouldNotBeZero)
             }
 
-            if duration <= 0
-            {
+            if duration <= 0 {
                 return Err(GovernorError::DurationError)
             }
-            
+
             let proposal = Proposal {
-                to: to,
+                to,
                 vote_start: self.env().block_timestamp(),
-                vote_end: self.env().block_timestamp() + duration * ONE_MINUTE,
+                vote_end: self.env().block_timestamp() + (duration * ONE_MINUTE),
                 executed: false,
                 amount,
             };
 
-            self.proposal_id = self.proposal_id + 1;
-            self.proposals.insert(self.proposal_id , &proposal);
-            self.proposal_votes.insert(proposal, &{ProposalVote {
-                for_votes: 0,
-                against_votes: 0
-            }});
+            self.proposal_id = self.next_proposal_id();
+            self.proposals.insert(self.proposal_id, &proposal);
+            self.proposal_votes.insert(proposal, &{
+                ProposalVote {
+                    for_votes: 0,
+                    against_votes: 0,
+                }
+            });
 
             Ok(())
         }
@@ -185,7 +194,7 @@ pub mod dao {
         #[ink(message)]
         pub fn execute(&mut self, proposal_id: ProposalId) -> Result<(), GovernorError> {
             if self.proposals.contains(&proposal_id) {
-                return Err(GovernorError::ProposalNotFound);
+                return Err(GovernorError::ProposalNotFound)
             };
 
             let mut p = self.get_proposal(proposal_id).unwrap();
@@ -195,11 +204,11 @@ pub mod dao {
 
             if let Some(votes) = self.get_proposal_votes(proposal_id) {
                 if votes.against_votes + votes.for_votes < self.quorum.into() {
-                    return Err(GovernorError::QuorumNotReached);
+                    return Err(GovernorError::QuorumNotReached)
                 }
 
                 if votes.against_votes < votes.for_votes {
-                    return Err(GovernorError::ProposalNotAccepted);
+                    return Err(GovernorError::ProposalNotAccepted)
                 }
             }
 
@@ -212,8 +221,8 @@ pub mod dao {
                     ExecutionInput::new(Selector::new(ink::selector_bytes!(
                         "PSP22::transfer"
                     )))
-                        .push_arg(p.to)
-                        .push_arg(p.amount),
+                    .push_arg(p.to)
+                    .push_arg(p.amount),
                 )
                 .returns::<()>()
                 .try_invoke()
@@ -233,8 +242,8 @@ pub mod dao {
         }
 
         #[ink(message)]
-        pub fn proposal_id (&self) -> ProposalId  {
-            self.proposal_id 
+        pub fn proposal_id(&self) -> ProposalId {
+            self.proposal_id
         }
 
         fn get_proposal_votes(&self, proposal_id: ProposalId) -> Option<ProposalVote> {
@@ -251,20 +260,26 @@ pub mod dao {
                 .call(self.governance_token)
                 .gas_limit(0)
                 .exec_input(
-                    ExecutionInput::new(Selector::new(ink::selector_bytes!("balance_of")))
-                        .push_arg(&account_id)
+                    ExecutionInput::new(Selector::new(ink::selector_bytes!(
+                        "balance_of"
+                    )))
+                    .push_arg(&account_id),
                 )
                 .returns::<Balance>()
                 .invoke()
+        }
+
+        fn next_proposal_id(&self) -> ProposalId {
+            self.proposal_id + 1
         }
 
         fn get_total_supply(&self) -> Balance {
             build_call::<DefaultEnvironment>()
                 .call(self.governance_token)
                 .gas_limit(0)
-                .exec_input(
-                    ExecutionInput::new(Selector::new(ink::selector_bytes!("total_supply")))
-                )
+                .exec_input(ExecutionInput::new(Selector::new(ink::selector_bytes!(
+                    "total_supply"
+                ))))
                 .returns::<Balance>()
                 .invoke()
         }
@@ -319,7 +334,7 @@ pub mod dao {
             );
             let result = governor.propose(accounts.django, 100, 1);
             assert_eq!(result, Ok(()));
-            let proposal = governor.get_proposal(0).unwrap();
+            let proposal = governor.get_proposal(1).unwrap();
             let now = governor.now();
             assert_eq!(
                 proposal,
@@ -331,7 +346,7 @@ pub mod dao {
                     executed: false,
                 }
             );
-            assert_eq!(governor.proposal_id(), 1);
+            assert_eq!(governor.next_proposal_id(), 2);
         }
 
         #[ink::test]
@@ -339,7 +354,7 @@ pub mod dao {
             let mut governor = create_contract(1000);
             let result = governor.propose(AccountId::from([0x02; 32]), 100, 1);
             assert_eq!(result, Ok(()));
-            let execute = governor.execute(0);
+            let execute = governor.execute(1);
             assert_eq!(execute, Err(GovernorError::QuorumNotReached));
         }
     }
