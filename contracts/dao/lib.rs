@@ -146,7 +146,7 @@ pub mod dao {
             proposal_id: ProposalId,
             vote: VoteType,
         ) -> Result<(), GovernorError> {
-            if self.proposals.contains(&proposal_id) {
+            if !self.proposals.contains(&proposal_id) {
                 return Err(GovernorError::ProposalNotFound)
             };
 
@@ -173,7 +173,7 @@ pub mod dao {
 
             let caller_balance = self.balance_of_acc(caller);
             let total_balance = self.get_total_supply();
-            let weight = caller_balance / total_balance * 100;
+            let weight = (caller_balance as u128 * 100) / total_balance as u128;
             let p = self.get_proposal(proposal_id).unwrap();
             let mut votes = self.proposal_votes.get(&p).expect("not found");
 
@@ -193,7 +193,7 @@ pub mod dao {
 
         #[ink(message)]
         pub fn execute(&mut self, proposal_id: ProposalId) -> Result<(), GovernorError> {
-            if self.proposals.contains(&proposal_id) {
+            if !self.proposals.contains(&proposal_id) {
                 return Err(GovernorError::ProposalNotFound)
             };
 
